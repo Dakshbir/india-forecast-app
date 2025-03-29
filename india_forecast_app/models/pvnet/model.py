@@ -435,9 +435,28 @@ class PVNetModel:
         return dataloader
 
     def _load_model(self):
-        """Load model"""
+        """Load model with retry logic"""
         log.info(f"Loading model: {self.id} - {self.version} ({self.name})")
 
-        return PVNetBaseModel.from_pretrained(
-            model_id=self.id, revision=self.version, token=self.hf_token
-        ).to(DEVICE)
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                log.info(f"Attempt {attempt}/{max_retries} to load model")
+                model = PVNetBaseModel.from_pretrained(
+                    model_id=self.id, revision=self.version, token=self.hf_token
+                ).to(DEVICE)
+                log.info(f"Successfully loaded model on attempt {attempt}")
+                return model
+            except Exception as e:
+                log.warning(f"Failed to load model on attempt {attempt}: {str(e)}")
+                if attempt < max_retries:
+                    log.info(f"Retrying in {retry_delay} seconds...")
+                    import time
+                    time.sleep(retry_delay)
+                    # Increase delay for next attempt (exponential backoff)
+                    retry_delay *= 2
+                else:
+                    log.error(f"Failed to load model after {max_retries} attempts")
+                    raise RuntimeError(f"Failed to load model after {max_retries} attempts: {str(e)}")
